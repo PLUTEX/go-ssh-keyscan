@@ -51,6 +51,7 @@ func main() {
 		User:            Username,
 		Auth:            auths,
 		HostKeyCallback: KeyScanCallback,
+		Timeout:         1e9,
 	}
 
 	var wg sync.WaitGroup
