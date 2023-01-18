@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"sync"
@@ -20,16 +19,20 @@ const (
 )
 
 var Ch chan string = make(chan string)
+var IgnoreError = errors.New("Ignore this error")
 
 func KeyScanCallback(hostname string, remote net.Addr, key ssh.PublicKey) error {
 	Ch <- fmt.Sprintf("%s %s", hostname[:len(hostname)-3], string(ssh.MarshalAuthorizedKey(key)))
-	return nil
+	return IgnoreError
 }
 
 func dial(server string, config *ssh.ClientConfig, wg *sync.WaitGroup) {
 	_, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", server, DefaultPort), config)
-	if err != nil {
-		log.Fatalln("Failed to dial:", err)
+	// For errors.Is() to work, x/crypto/ssh/client.go needs to be patched
+	// to used %w instead of %v
+	if err != nil && !errors.Is(err, IgnoreError) {
+		// Don't expect a key from out()
+		wg.Done()
 	}
 	wg.Done()
 
