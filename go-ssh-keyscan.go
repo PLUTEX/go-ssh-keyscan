@@ -10,11 +10,10 @@ import (
 	"sync"
 
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
 )
 
 const (
-	Username    = "sszuecs"
+	Username    = "dummy"
 	DefaultPort = 22
 )
 
@@ -46,17 +45,7 @@ func out(wg *sync.WaitGroup) {
 }
 
 func main() {
-	auth_socket := os.Getenv("SSH_AUTH_SOCK")
-	if auth_socket == "" {
-		log.Fatal(errors.New("no $SSH_AUTH_SOCK defined"))
-	}
-	conn, err := net.Dial("unix", auth_socket)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
-	ag := agent.NewClient(conn)
-	auths := []ssh.AuthMethod{ssh.PublicKeysCallback(ag.Signers)}
+	auths := []ssh.AuthMethod{}
 
 	config := &ssh.ClientConfig{
 		User:            Username,
