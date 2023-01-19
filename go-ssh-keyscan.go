@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"log"
 	"os"
 	"sync"
 	"strings"
@@ -57,6 +58,8 @@ func out(wg *sync.WaitGroup) {
 
 func main() {
 	var wg sync.WaitGroup
+	var alias string
+	var server string
 	go out(&wg)
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -65,9 +68,15 @@ func main() {
 			break
 		}
 		line = line[:len(line)-1] // chomp
-		server, alias, has_alias := strings.Cut(line, " ")
-		if !has_alias {
-			alias = server
+		fields := strings.Fields(line)
+		if len(fields) == 1 {
+			server = fields[0]
+			alias = fields[0]
+		} else if len(fields) == 2 {
+			server = fields[0]
+			alias = fields[1]
+		} else {
+			log.Fatalln("Too many whitespaces in input line:", line)
 		}
 		wg.Add(2)                       // dial and print
 		go dial(server, alias, &wg)
