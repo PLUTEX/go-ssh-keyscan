@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"strings"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -20,12 +21,22 @@ const (
 var Ch chan string = make(chan string)
 var IgnoreError = errors.New("Ignore this error")
 
-func KeyScanCallback(hostname string, remote net.Addr, key ssh.PublicKey) error {
-	Ch <- fmt.Sprintf("%s %s", hostname[:len(hostname)-3], string(ssh.MarshalAuthorizedKey(key)))
-	return IgnoreError
+
+func GetKeyScanCallback(alias string) func(string, net.Addr, ssh.PublicKey) error {
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		Ch <- fmt.Sprintf("%s %s", alias, string(ssh.MarshalAuthorizedKey(key)))
+		return IgnoreError
+	}
 }
 
-func dial(server string, config *ssh.ClientConfig, wg *sync.WaitGroup) {
+func dial(server string, alias string, wg *sync.WaitGroup) {
+	config := &ssh.ClientConfig{
+		User:            Username,
+		Auth:            []ssh.AuthMethod{},
+		HostKeyCallback: GetKeyScanCallback(alias),
+		Timeout:         1e9,
+	}
+
 	_, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", server, DefaultPort), config)
 	// For errors.Is() to work, x/crypto/ssh/client.go needs to be patched
 	// to used %w instead of %v
@@ -45,26 +56,21 @@ func out(wg *sync.WaitGroup) {
 }
 
 func main() {
-	auths := []ssh.AuthMethod{}
-
-	config := &ssh.ClientConfig{
-		User:            Username,
-		Auth:            auths,
-		HostKeyCallback: KeyScanCallback,
-		Timeout:         1e9,
-	}
-
 	var wg sync.WaitGroup
 	go out(&wg)
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		server, err := reader.ReadString('\n')
+		line, err := reader.ReadString('\n')
 		if err == io.EOF {
 			break
 		}
-		server = server[:len(server)-1] // chomp
+		line = line[:len(line)-1] // chomp
+		server, alias, has_alias := strings.Cut(line, " ")
+		if !has_alias {
+			alias = server
+		}
 		wg.Add(2)                       // dial and print
-		go dial(server, config, &wg)
+		go dial(server, alias, &wg)
 	}
 	wg.Wait()
 }
