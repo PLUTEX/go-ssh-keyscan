@@ -21,6 +21,16 @@ const (
 
 var Ch chan string = make(chan string)
 var IgnoreError = errors.New("Ignore this error")
+var supportedHostKeyAlgos = []string{
+	ssh.KeyAlgoRSA,
+	ssh.KeyAlgoDSA,
+	ssh.KeyAlgoECDSA256,
+	ssh.KeyAlgoECDSA384,
+	ssh.KeyAlgoECDSA521,
+	ssh.KeyAlgoED25519,
+	// not yet supported in crypto@0.3.0: ssh.KeyAlgoRSASHA256,
+	// not yet supported in crypto@0.3.0: ssh.KeyAlgoRSASHA512,
+}
 
 
 func GetKeyScanCallback(alias string) func(string, net.Addr, ssh.PublicKey) error {
@@ -30,12 +40,13 @@ func GetKeyScanCallback(alias string) func(string, net.Addr, ssh.PublicKey) erro
 	}
 }
 
-func dial(server string, alias string, wg *sync.WaitGroup) {
+func dial(server string, alias string, hostkeyalgo string, wg *sync.WaitGroup) {
 	config := &ssh.ClientConfig{
-		User:            Username,
-		Auth:            []ssh.AuthMethod{},
-		HostKeyCallback: GetKeyScanCallback(alias),
-		Timeout:         1e9,
+		User:              Username,
+		Auth:              []ssh.AuthMethod{},
+		HostKeyAlgorithms: []string{hostkeyalgo},
+		HostKeyCallback:   GetKeyScanCallback(alias),
+		Timeout:           1e9,
 	}
 
 	_, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", server, DefaultPort), config)
@@ -78,8 +89,10 @@ func main() {
 		} else {
 			log.Fatalln("Too many whitespaces in input line:", line)
 		}
-		wg.Add(2)                       // dial and print
-		go dial(server, alias, &wg)
+		wg.Add(2 * len(supportedHostKeyAlgos))         // dial and print
+		for _, hostkeyalgo := range supportedHostKeyAlgos {
+			go dial(server, alias, hostkeyalgo, &wg)
+		}
 	}
 	wg.Wait()
 }
