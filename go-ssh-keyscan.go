@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -20,7 +19,6 @@ const (
 )
 
 var Ch chan string = make(chan string)
-var IgnoreError = errors.New("Ignore this error")
 var supportedHostKeyAlgos = []string{
 	ssh.KeyAlgoRSA,
 	ssh.KeyAlgoDSA,
@@ -33,10 +31,11 @@ var supportedHostKeyAlgos = []string{
 }
 
 
-func GetKeyScanCallback(alias string) func(string, net.Addr, ssh.PublicKey) error {
+func GetKeyScanCallback(alias string, wg *sync.WaitGroup) func(string, net.Addr, ssh.PublicKey) error {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		wg.Add(1)
 		Ch <- fmt.Sprintf("%s %s", alias, string(ssh.MarshalAuthorizedKey(key)))
-		return IgnoreError
+		return nil
 	}
 }
 
@@ -45,17 +44,11 @@ func dial(server string, alias string, hostkeyalgo string, wg *sync.WaitGroup) {
 		User:              Username,
 		Auth:              []ssh.AuthMethod{},
 		HostKeyAlgorithms: []string{hostkeyalgo},
-		HostKeyCallback:   GetKeyScanCallback(alias),
+		HostKeyCallback:   GetKeyScanCallback(alias, wg),
 		Timeout:           1e9,
 	}
 
-	_, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", server, DefaultPort), config)
-	// For errors.Is() to work, x/crypto/ssh/client.go needs to be patched
-	// to used %w instead of %v
-	if err != nil && !errors.Is(err, IgnoreError) {
-		// Don't expect a key from out()
-		wg.Done()
-	}
+	ssh.Dial("tcp", fmt.Sprintf("%s:%d", server, DefaultPort), config)
 	wg.Done()
 
 }
@@ -89,7 +82,7 @@ func main() {
 		} else {
 			log.Fatalln("Too many whitespaces in input line:", line)
 		}
-		wg.Add(2 * len(supportedHostKeyAlgos))         // dial and print
+		wg.Add(len(supportedHostKeyAlgos))
 		for _, hostkeyalgo := range supportedHostKeyAlgos {
 			go dial(server, alias, hostkeyalgo, &wg)
 		}
